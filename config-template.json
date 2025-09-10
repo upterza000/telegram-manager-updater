@@ -1,0 +1,33 @@
+{
+  "telegram": {
+    "botToken": "YOUR_TELEGRAM_BOT_TOKEN",
+    "chatId": "YOUR_CHAT_ID_OR_CHANNEL_ID",
+    "description": "Get bot token from @BotFather, chat ID from @userinfobot"
+  },
+  "googleDrive": {
+    "folderId": "YOUR_GOOGLE_DRIVE_FOLDER_ID", 
+    "searchQuery": "mimeType contains 'video/' and trashed = false",
+    "description": "Optional: specify folder ID to search in specific folder"
+  },
+  "ffmpeg": {
+    "videoCodec": "libx264",
+    "audioCodec": "aac", 
+    "preset": "fast",
+    "customFlags": "-movflags +faststart",
+    "maxFileSize": "50MB",
+    "description": "FFmpeg settings for video optimization"
+  },
+  "workflow": {
+    "autoThumbnail": true,
+    "sendProgressUpdates": false,
+    "customCaption": "🎬 {filename}\n\n📁 Size: {filesize}\n⚡ Optimized for streaming\n\n#video #streaming",
+    "description": "Workflow behavior settings"
+  },
+  "advanced": {
+    "timeoutSeconds": 300,
+    "tempDirectory": "/tmp",
+    "cleanupOnError": true,
+    "logLevel": "info",
+    "description": "Advanced configuration options"
+  }
+}

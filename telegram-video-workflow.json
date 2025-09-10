@@ -1,0 +1,365 @@
+{
+  "name": "Telegram Video Manager - Google Drive to Telegram Streaming",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "f9a7b8c3-1e4d-4a5b-9c8e-7f6e5d4c3b2a",
+      "name": "When clicking 'Start Workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "driveId": {
+          "__rl": true,
+          "value": "={{ $json.driveId || 'root' }}",
+          "mode": "id"
+        },
+        "query": "mimeType contains 'video/' and trashed = false",
+        "additionalFields": {
+          "fields": [
+            "id",
+            "name",
+            "mimeType",
+            "size",
+            "webViewLink",
+            "webContentLink"
+          ]
+        }
+      },
+      "id": "a1b2c3d4-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+      "name": "Search Videos in Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-credentials",
+          "name": "Google Drive Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?alt=media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "b2c3d4e5-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
+      "name": "Download Video Binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-credentials",
+          "name": "Google Drive Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process video with ffmpeg for Telegram inline streaming\nconst fs = require('fs');\nconst { exec } = require('child_process');\nconst path = require('path');\nconst crypto = require('crypto');\n\n// Get input data\nconst inputData = $input.all();\nconst videoFile = inputData[0].binary;\nconst originalName = inputData[0].json.name;\n\n// Generate unique filename\nconst timestamp = Date.now();\nconst randomId = crypto.randomBytes(8).toString('hex');\nconst inputPath = `/tmp/input_${timestamp}_${randomId}.${path.extname(originalName)}`;\nconst outputPath = `/tmp/output_${timestamp}_${randomId}.mp4`;\nconst thumbnailPath = `/tmp/thumb_${timestamp}_${randomId}.jpg`;\n\ntry {\n  // Write input file\n  fs.writeFileSync(inputPath, Buffer.from(videoFile.data, videoFile.fileExtension === 'base64' ? 'base64' : 'binary'));\n  \n  // FFmpeg command for Telegram optimization\n  // Key flags:\n  // -movflags +faststart: Move moov atom to beginning for streaming\n  // -c:v libx264: Ensure H.264 codec compatibility\n  // -c:a aac: Ensure AAC audio codec\n  // -preset fast: Balance between speed and compression\n  const ffmpegCmd = `ffmpeg -i \"${inputPath}\" -c:v libx264 -c:a aac -preset fast -movflags +faststart -y \"${outputPath}\"`;\n  \n  // Generate thumbnail command\n  const thumbnailCmd = `ffmpeg -i \"${inputPath}\" -ss 00:00:01 -vframes 1 -q:v 2 -y \"${thumbnailPath}\"`;\n  \n  // Execute ffmpeg for video processing\n  const videoResult = await new Promise((resolve, reject) => {\n    exec(ffmpegCmd, { timeout: 300000 }, (error, stdout, stderr) => {\n      if (error) {\n        console.error('FFmpeg video error:', error);\n        console.error('FFmpeg stderr:', stderr);\n        reject(error);\n      } else {\n        resolve({ stdout, stderr });\n      }\n    });\n  });\n  \n  // Execute ffmpeg for thumbnail generation\n  const thumbResult = await new Promise((resolve, reject) => {\n    exec(thumbnailCmd, { timeout: 60000 }, (error, stdout, stderr) => {\n      if (error) {\n        console.error('FFmpeg thumbnail error:', error);\n        console.error('FFmpeg stderr:', stderr);\n        // Don't reject - thumbnail is optional\n        resolve(null);\n      } else {\n        resolve({ stdout, stderr });\n      }\n    });\n  });\n  \n  // Read processed files\n  const processedVideo = fs.readFileSync(outputPath);\n  let thumbnailData = null;\n  \n  if (thumbResult && fs.existsSync(thumbnailPath)) {\n    thumbnailData = fs.readFileSync(thumbnailPath);\n  }\n  \n  // Clean up temporary files\n  [inputPath, outputPath, thumbnailPath].forEach(filePath => {\n    try {\n      if (fs.existsSync(filePath)) {\n        fs.unlinkSync(filePath);\n      }\n    } catch (e) {\n      console.warn('Failed to cleanup file:', filePath, e.message);\n    }\n  });\n  \n  // Return processed data\n  return {\n    json: {\n      originalName,\n      processedName: `processed_${originalName}`,\n      originalSize: videoFile.data.length,\n      processedSize: processedVideo.length,\n      hasThumbnail: !!thumbnailData,\n      ffmpegOutput: videoResult.stderr\n    },\n    binary: {\n      video: {\n        data: processedVideo,\n        mimeType: 'video/mp4',\n        fileExtension: 'mp4',\n        fileName: `processed_${path.parse(originalName).name}.mp4`\n      },\n      thumbnail: thumbnailData ? {\n        data: thumbnailData,\n        mimeType: 'image/jpeg',\n        fileExtension: 'jpg',\n        fileName: `thumb_${path.parse(originalName).name}.jpg`\n      } : null\n    }\n  };\n  \n} catch (error) {\n  // Clean up files on error\n  [inputPath, outputPath, thumbnailPath].forEach(filePath => {\n    try {\n      if (fs.existsSync(filePath)) {\n        fs.unlinkSync(filePath);\n      }\n    } catch (e) {\n      // Ignore cleanup errors\n    }\n  });\n  \n  throw new Error(`Video processing failed: ${error.message}`);\n}"
+      },
+      "id": "c3d4e5f6-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
+      "name": "Process Video with FFmpeg",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $('Set Telegram Config').item.json.botToken }}/sendVideo",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $('Set Telegram Config').item.json.chatId }}"
+            },
+            {
+              "name": "caption",
+              "value": "=🎬 {{ $json.originalName }}\\n\\n📁 Size: {{ Math.round($json.processedSize / 1024 / 1024 * 100) / 100 }} MB\\n⚡ Optimized for streaming\\n\\n#video #streaming"
+            },
+            {
+              "name": "supports_streaming",
+              "value": "true"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "multipart-form-data",
+          "timeout": 300000
+        },
+        "sendBinaryData": true,
+        "binaryPropertyName": "video"
+      },
+      "id": "d4e5f6g7-8h9i-0j1k-2l3m-4n5o6p7q8r9s",
+      "name": "Send Video to Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $('Set Telegram Config').item.json.botToken }}/sendPhoto",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $('Set Telegram Config').item.json.chatId }}"
+            },
+            {
+              "name": "caption",
+              "value": "=📸 Thumbnail for: {{ $json.originalName }}"
+            },
+            {
+              "name": "reply_markup",
+              "value": "={\\\"inline_keyboard\\\":[[{\\\"text\\\":\\\"📹 Watch Video\\\",\\\"callback_data\\\":\\\"watch_video\\\"}]]}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "multipart-form-data"
+        },
+        "sendBinaryData": true,
+        "binaryPropertyName": "thumbnail"
+      },
+      "id": "e5f6g7h8-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
+      "name": "Send Thumbnail (Optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1340,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition_1",
+              "leftValue": "={{ $json.hasThumbnail }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f6g7h8i9-0j1k-2l3m-4n5o-6p7q8r9s0t1u",
+      "name": "Has Thumbnail?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment_1",
+              "name": "botToken",
+              "value": "YOUR_TELEGRAM_BOT_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "assignment_2", 
+              "name": "chatId",
+              "value": "YOUR_CHAT_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "g7h8i9j0-1k2l-3m4n-5o6p-7q8r9s0t1u2v",
+      "name": "Set Telegram Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        900,
+        140
+      ],
+      "notes": "Configure your Telegram bot token and chat ID here"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log processing results and prepare summary\nconst items = $input.all();\n\nreturn items.map(item => ({\n  json: {\n    ...item.json,\n    processingComplete: true,\n    timestamp: new Date().toISOString(),\n    summary: {\n      originalFile: item.json.originalName,\n      processedSize: `${Math.round(item.json.processedSize / 1024 / 1024 * 100) / 100} MB`,\n      hasThumbnail: item.json.hasThumbnail,\n      streamingEnabled: true,\n      faststartApplied: true\n    }\n  }\n}));"
+      },
+      "id": "h8i9j0k1-2l3m-4n5o-6p7q-8r9s0t1u2v3w",
+      "name": "Processing Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Start Workflow'": {
+      "main": [
+        [
+          {
+            "node": "Search Videos in Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Videos in Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Download Video Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video Binary": {
+      "main": [
+        [
+          {
+            "node": "Process Video with FFmpeg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Video with FFmpeg": {
+      "main": [
+        [
+          {
+            "node": "Has Thumbnail?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Video to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Video to Telegram": {
+      "main": [
+        [
+          {
+            "node": "Processing Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Thumbnail (Optional)": {
+      "main": [
+        [
+          {
+            "node": "Processing Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Thumbnail?": {
+      "main": [
+        [
+          {
+            "node": "Send Thumbnail (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Telegram Config": {
+      "main": [
+        [
+          {
+            "node": "Process Video with FFmpeg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.1.0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "telegram-video-manager"
+  },
+  "id": "telegram-video-workflow",
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "video-processing",
+      "name": "Video Processing"
+    },
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z", 
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "telegram-integration",
+      "name": "Telegram Integration"
+    }
+  ]
+}

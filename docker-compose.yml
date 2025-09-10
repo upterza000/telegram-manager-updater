@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-telegram-video-manager
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-admin}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - NODE_ENV=production
+      - WEBHOOK_URL=${N8N_HOST:-localhost}:5678
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /tmp:/tmp  # For video processing temporary files
+    command: >
+      sh -c "
+        apt-get update && 
+        apt-get install -y ffmpeg && 
+        n8n start
+      "
+    networks:
+      - n8n-network
+
+  # Optional: Redis for better performance with multiple workflows
+  redis:
+    image: redis:7-alpine
+    container_name: n8n-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - n8n-network
+
+volumes:
+  n8n_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  n8n-network:
+    driver: bridge
+
+# Environment variables template
+# Create a .env file with the following:
+# N8N_BASIC_AUTH_USER=your_username
+# N8N_BASIC_AUTH_PASSWORD=your_secure_password
+# N8N_HOST=your_domain.com
+# N8N_PROTOCOL=https

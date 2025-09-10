@@ -1,0 +1,90 @@
+{
+  "name": "Advanced FFmpeg Configuration Examples",
+  "description": "Various FFmpeg configurations for different use cases",
+  
+  "presets": {
+    "telegram_optimized": {
+      "description": "Default Telegram streaming optimization",
+      "command": "ffmpeg -i input.mp4 -c:v libx264 -c:a aac -preset fast -movflags +faststart -y output.mp4",
+      "features": ["Fast encoding", "Streaming ready", "H.264/AAC compatibility"]
+    },
+    
+    "high_quality": {
+      "description": "High quality for important videos",
+      "command": "ffmpeg -i input.mp4 -c:v libx264 -c:a aac -preset slow -crf 18 -movflags +faststart -y output.mp4",
+      "features": ["Better compression", "Higher quality", "Slower encoding"]
+    },
+    
+    "low_bandwidth": {
+      "description": "Optimized for slow internet connections",
+      "command": "ffmpeg -i input.mp4 -c:v libx264 -c:a aac -preset fast -crf 28 -b:a 96k -movflags +faststart -vf scale=854:480 -y output.mp4",
+      "features": ["Smaller file size", "Lower resolution", "Reduced bitrate"]
+    },
+    
+    "mobile_friendly": {
+      "description": "Optimized for mobile viewing",
+      "command": "ffmpeg -i input.mp4 -c:v libx264 -c:a aac -preset medium -crf 23 -maxrate 1M -bufsize 2M -movflags +faststart -vf scale=1280:720 -y output.mp4",
+      "features": ["720p resolution", "Rate limiting", "Mobile optimized"]
+    }
+  },
+  
+  "customizations": {
+    "resolution_scaling": {
+      "720p": "-vf scale=1280:720",
+      "480p": "-vf scale=854:480", 
+      "360p": "-vf scale=640:360",
+      "maintain_aspect": "-vf scale=1280:-2"
+    },
+    
+    "quality_settings": {
+      "lossless": "-crf 0",
+      "high": "-crf 18",
+      "medium": "-crf 23",
+      "low": "-crf 28",
+      "very_low": "-crf 35"
+    },
+    
+    "encoding_speed": {
+      "ultrafast": "-preset ultrafast",
+      "superfast": "-preset superfast", 
+      "veryfast": "-preset veryfast",
+      "faster": "-preset faster",
+      "fast": "-preset fast",
+      "medium": "-preset medium",
+      "slow": "-preset slow",
+      "slower": "-preset slower",
+      "veryslow": "-preset veryslow"
+    }
+  },
+  
+  "telegram_requirements": {
+    "max_file_size": "50MB for bots, 2GB for premium users",
+    "supported_formats": ["MP4", "MOV", "AVI", "MKV"],
+    "recommended_codecs": {
+      "video": "H.264 (libx264)",
+      "audio": "AAC"
+    },
+    "streaming_requirements": [
+      "moov atom at beginning (-movflags +faststart)",
+      "Progressive download support",
+      "Send as video type, not document"
+    ]
+  },
+  
+  "troubleshooting": {
+    "common_issues": {
+      "no_streaming": {
+        "problem": "Video uploads but won't stream inline",
+        "solution": "Ensure -movflags +faststart is used and sent as video type"
+      },
+      "large_file": {
+        "problem": "File too large for Telegram",
+        "solution": "Increase compression with higher CRF value or reduce resolution"
+      },
+      "incompatible_codec": {
+        "problem": "Video won't play on some devices", 
+        "solution": "Use H.264/AAC codecs with baseline profile"
+      }
+    }
+  }
+}

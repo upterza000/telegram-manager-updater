@@ -1,5 +1,19 @@
 {
-  "version": "1.1.0",
+  "version": "2.0.0",
   "url": "https://github.com/upterza000/telegram-manager-updater.git",
-  "changelog": "- เพิ่มฟีเจอร์ A\n- แก้ไขข้อผิดพลาด B\n- ปรับปรุงประสิทธิภาพ"
+  "changelog": "- 🎬 เพิ่ม N8N workflow สำหรับประมวลผลวิดีโอ\n- 📁 รองรับการค้นหาและดาวน์โหลดจาก Google Drive\n- ⚡ ปรับแต่งวิดีโอด้วย FFmpeg สำหรับ inline streaming\n- 🖼️ สร้าง thumbnail อัตโนมัติ\n- 📱 ส่งวิดีโอเข้า Telegram พร้อม streaming support\n- 🔧 Docker setup พร้อม FFmpeg\n- 📚 เอกสารและตัวอย่างครบถ้วน",
+  "features": [
+    "Google Drive Integration",
+    "FFmpeg Video Processing", 
+    "Telegram Streaming Support",
+    "Automatic Thumbnails",
+    "Docker Deployment",
+    "Comprehensive Documentation"
+  ],
+  "requirements": {
+    "n8n": ">=1.0.0",
+    "ffmpeg": ">=4.0.0",
+    "docker": ">=20.0.0",
+    "docker-compose": ">=2.0.0"
+  }
 }
