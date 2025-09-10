@@ -1,0 +1,80 @@
+{
+  "_comment": "Example settings for N8N Telegram Video Workflow - Copy and customize as needed",
+  
+  "google_drive_search": {
+    "folder_id": "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE",
+    "query_filter": "mimeType contains 'video/' and trashed=false and parents in 'YOUR_FOLDER_ID'",
+    "max_results": 10,
+    "supported_formats": ["mp4", "avi", "mov", "mkv", "webm"]
+  },
+
+  "telegram_settings": {
+    "bot_token": "YOUR_BOT_TOKEN_HERE",
+    "chat_id": "YOUR_CHAT_ID_HERE", 
+    "message_thread_id": null,
+    "disable_notification": false,
+    "protect_content": false
+  },
+
+  "video_processing": {
+    "ffmpeg_quality": {
+      "video_codec": "copy",
+      "audio_codec": "copy", 
+      "extra_flags": ["-movflags", "+faststart", "-avoid_negative_ts", "make_zero"]
+    },
+    "thumbnail_settings": {
+      "timestamp": "00:00:01",
+      "quality": 2,
+      "width": 320,
+      "height": 240,
+      "format": "jpg"
+    },
+    "size_limits": {
+      "max_size_mb": 50,
+      "warn_size_mb": 40,
+      "compress_above_mb": 30
+    }
+  },
+
+  "file_management": {
+    "temp_directory": "/tmp",
+    "cleanup_after_processing": true,
+    "preserve_original": false,
+    "backup_processed": false
+  },
+
+  "message_templates": {
+    "success_caption": "🎬 {video_name}\n\n📹 Optimized for streaming\n💾 Size: {size_mb} MB\n🕒 Processed: {timestamp}\n\n⚡ Ready to play inline!",
+    "error_message": "❌ Processing failed for: {video_name}\nReason: {error_message}",
+    "size_warning": "⚠️ Video size ({size_mb}MB) exceeds recommended limit"
+  },
+
+  "inline_keyboard": {
+    "buttons": [
+      [
+        {"text": "🔄 Process Another", "callback_data": "process_another"},
+        {"text": "📁 Open Folder", "url": "https://drive.google.com/drive/folders/YOUR_FOLDER_ID"}
+      ],
+      [
+        {"text": "📊 Stats", "callback_data": "show_stats"},
+        {"text": "❓ Help", "callback_data": "show_help"}
+      ]
+    ]
+  },
+
+  "monitoring": {
+    "enable_logging": true,
+    "log_level": "info",
+    "track_processing_time": true,
+    "send_completion_notifications": true,
+    "admin_chat_id": "ADMIN_CHAT_ID_FOR_NOTIFICATIONS"
+  },
+
+  "advanced_options": {
+    "parallel_processing": false,
+    "retry_failed_uploads": 3,
+    "timeout_seconds": 300,
+    "enable_webhook_notifications": false,
+    "custom_ffmpeg_path": "/usr/bin/ffmpeg"
+  }
+}
