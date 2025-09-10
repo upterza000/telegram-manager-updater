@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: telegram-video-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678}
+      - N8N_LOG_LEVEL=${LOG_LEVEL:-info}
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /tmp:/tmp
+      - ./scripts:/scripts:ro
+      - ./workflows:/workflows:ro
+    depends_on:
+      - postgres
+    networks:
+      - telegram-video-net
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: telegram-video-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${DB_NAME:-n8n}
+      - POSTGRES_USER=${DB_USER:-n8n}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-n8n_password}
+      - POSTGRES_NON_ROOT_USER=${DB_USER:-n8n}
+      - POSTGRES_NON_ROOT_PASSWORD=${DB_PASSWORD:-n8n_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - telegram-video-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-n8n} -d ${DB_NAME:-n8n}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # FFmpeg service container (for processing)
+  ffmpeg-processor:
+    image: jrottenberg/ffmpeg:4.4-alpine
+    container_name: telegram-ffmpeg
+    restart: "no"
+    volumes:
+      - /tmp:/tmp
+    networks:
+      - telegram-video-net
+    profiles:
+      - tools
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: telegram-video-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - telegram-video-net
+    profiles:
+      - cache
+
+  # Monitoring with Grafana (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: telegram-video-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - telegram-video-net
+    profiles:
+      - monitoring
+
+volumes:
+  n8n_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  telegram-video-net:
+    driver: bridge

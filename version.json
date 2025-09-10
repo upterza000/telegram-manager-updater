@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "2.0.0",
   "url": "https://github.com/upterza000/telegram-manager-updater.git",
-  "changelog": "- เพิ่มฟีเจอร์ A\n- แก้ไขข้อผิดพลาด B\n- ปรับปรุงประสิทธิภาพ"
+  "changelog": "- เพิ่ม N8N Workflow สำหรับประมวลผลวิดีโออัตโนมัติ\n- รองรับการดาวน์โหลดจาก Google Drive\n- ประมวลผลด้วย FFmpeg พร้อม faststart สำหรับ Telegram streaming\n- สร้าง thumbnail อัตโนมัติ\n- ส่งไปยัง Telegram พร้อมปุ่ม interactive\n- เพิ่ม Docker support สำหรับการติดตั้งง่าย\n- เพิ่มระบบ error handling และ logging\n- เพิ่ม scripts สำหรับ setup และ testing"
 }

@@ -1,0 +1,75 @@
+# Environment and Configuration
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary directories
+tmp/
+temp/
+.tmp/
+
+# Docker volumes and data
+docker-data/
+postgres-data/
+n8n-data/
+grafana-data/
+redis-data/
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files and coverage
+coverage/
+.nyc_output
+.coverage
+test-results/
+test-output/
+
+# Build artifacts
+build/
+dist/
+out/
+
+# Node modules (if any Node.js components added)
+node_modules/
+
+# FFmpeg test files
+/tmp/telegram-video-test/
+
+# Video processing temp files
+*.mp4.temp
+*.avi.temp
+*.mov.temp
+*_optimized.*
+*_thumb.*
+*_info.json
+
+# Backup files
+*.backup
+*.bak
