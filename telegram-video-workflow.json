@@ -1,0 +1,374 @@
+{
+  "name": "Telegram Video Manager - Auto Processing & Streaming",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerOn": "manualTrigger"
+      },
+      "id": "a8c0a2c0-d8e8-4c5e-8f2f-1a2b3c4d5e6f",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "options": {
+          "fields": [
+            "id",
+            "name",
+            "mimeType",
+            "size",
+            "webContentLink",
+            "thumbnailLink"
+          ],
+          "q": "mimeType contains 'video/' and trashed=false"
+        },
+        "resource": "file"
+      },
+      "id": "b1d2e3f4-a5b6-7c8d-9e0f-1a2b3c4d5e6f",
+      "name": "Google Drive - Search Videos",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.webContentLink }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api"
+      },
+      "id": "c2e4f6g8-b7d9-1c3e-5f7a-2b4d6f8a0c2e",
+      "name": "Download Video Binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "sh",
+        "arguments": "-c \"echo '{{ $binary.data }}' | base64 -d > /tmp/input_video.mp4 && ffmpeg -i /tmp/input_video.mp4 -movflags +faststart -c copy -avoid_negative_ts make_zero -y /tmp/optimized_video.mp4 && echo 'FFmpeg processing completed successfully'\"",
+        "options": {
+          "cwd": "/tmp"
+        }
+      },
+      "id": "d3f5g7h9-c8e0-2d4f-6g8b-3c5e7g9b1d3f",
+      "name": "FFmpeg - Optimize for Streaming",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        900,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg",
+        "arguments": "-i /tmp/optimized_video.mp4 -ss 00:00:01 -vframes 1 -q:v 2 -y /tmp/thumbnail.jpg",
+        "options": {
+          "cwd": "/tmp"
+        }
+      },
+      "id": "e4g6h8i0-d9f1-3e5g-7h9c-4d6f8h0c2e4g",
+      "name": "Generate Thumbnail",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/tmp/optimized_video.mp4",
+        "options": {}
+      },
+      "id": "f5h7i9j1-e0g2-4f6h-8i0d-5e7g9i1d3f5h",
+      "name": "Read Optimized Video",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/tmp/thumbnail.jpg",
+        "options": {}
+      },
+      "id": "g6i8j0k2-f1h3-5g7i-9j1e-6f8h0j2e4g6i",
+      "name": "Read Thumbnail",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendVideo",
+        "chatId": "{{ $('Manual Trigger').item.json.chatId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "🎬 {{ $('Google Drive - Search Videos').item.json.name }}\n\n📹 Optimized for streaming\n💾 Size: {{ ($('Google Drive - Search Videos').item.json.size / 1024 / 1024).toFixed(2) }} MB\n\n⚡ Ready to play inline!",
+          "parse_mode": "HTML",
+          "supports_streaming": true,
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "🔄 Process Another",
+                  "callback_data": "process_another"
+                },
+                {
+                  "text": "📁 Open Folder",
+                  "url": "https://drive.google.com"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "id": "h7j9k1l3-g2i4-6h8j-0k2f-7g9i1k3f5h7j",
+      "name": "Telegram - Send Streaming Video",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "video_name",
+              "name": "video_name",
+              "value": "={{ $('Google Drive - Search Videos').item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "video_size",
+              "name": "video_size", 
+              "value": "={{ $('Google Drive - Search Videos').item.json.size }}",
+              "type": "number"
+            },
+            {
+              "id": "processing_status",
+              "name": "processing_status",
+              "value": "optimized_for_streaming",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "i8k0l2m4-h3j5-7i9k-1l3g-8h0j2l4g6i8k",
+      "name": "Set Video Metadata",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "video_size_check",
+              "leftValue": "={{ $('Google Drive - Search Videos').item.json.size }}",
+              "rightValue": 52428800,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "j9l1m3n5-i4k6-8j0l-2m4h-9i1k3m5h7j9l",
+      "name": "Check Video Size (50MB limit)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "command": "rm",
+        "arguments": "-f /tmp/input_video.mp4 /tmp/optimized_video.mp4 /tmp/thumbnail.jpg",
+        "options": {
+          "cwd": "/tmp"
+        }
+      },
+      "id": "k0m2n4o6-j5l7-9k1m-3n5i-0j2l4n6i8k0m",
+      "name": "Cleanup Temp Files", 
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Search Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Search Videos": {
+      "main": [
+        [
+          {
+            "node": "Download Video Binary",
+            "type": "main", 
+            "index": 0
+          },
+          {
+            "node": "Check Video Size (50MB limit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video Binary": {
+      "main": [
+        [
+          {
+            "node": "FFmpeg - Optimize for Streaming",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FFmpeg - Optimize for Streaming": {
+      "main": [
+        [
+          {
+            "node": "Generate Thumbnail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Optimized Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Read Thumbnail", 
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Optimized Video": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Streaming Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Set Video Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Video Size (50MB limit)": {
+      "main": [
+        [
+          {
+            "node": "Set Video Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Send Streaming Video": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Temp Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "telegram-video",
+      "name": "Telegram Video Processing"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

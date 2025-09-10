@@ -1,0 +1,72 @@
+{
+  "workflow_settings": {
+    "name": "Telegram Video Manager - Auto Processing & Streaming",
+    "description": "Automated workflow for Google Drive video processing and Telegram streaming delivery",
+    "version": "1.0.0"
+  },
+  "required_credentials": {
+    "google_drive": {
+      "type": "googleDriveOAuth2Api",
+      "required_scopes": [
+        "https://www.googleapis.com/auth/drive.readonly"
+      ]
+    },
+    "telegram_bot": {
+      "type": "telegramApi",
+      "required_fields": [
+        "access_token",
+        "chat_id"
+      ]
+    }
+  },
+  "ffmpeg_settings": {
+    "optimization_flags": [
+      "-movflags +faststart",
+      "-c copy",
+      "-avoid_negative_ts make_zero"
+    ],
+    "thumbnail_settings": {
+      "timestamp": "00:00:01",
+      "quality": 2,
+      "format": "jpg"
+    }
+  },
+  "telegram_limits": {
+    "max_video_size_mb": 50,
+    "supported_formats": [
+      "mp4",
+      "avi",
+      "mov",
+      "mkv"
+    ]
+  },
+  "processing_options": {
+    "enable_thumbnail_generation": true,
+    "enable_streaming_optimization": true,
+    "cleanup_temp_files": true,
+    "validate_file_size": true
+  },
+  "message_template": {
+    "caption_format": "🎬 {video_name}\n\n📹 Optimized for streaming\n💾 Size: {video_size_mb} MB\n\n⚡ Ready to play inline!",
+    "parse_mode": "HTML",
+    "inline_buttons": [
+      {
+        "text": "🔄 Process Another",
+        "callback_data": "process_another"
+      },
+      {
+        "text": "📁 Open Folder", 
+        "url": "https://drive.google.com"
+      }
+    ]
+  },
+  "error_handling": {
+    "retry_attempts": 3,
+    "timeout_seconds": 300,
+    "fallback_actions": [
+      "notify_admin",
+      "log_error",
+      "cleanup_files"
+    ]
+  }
+}
