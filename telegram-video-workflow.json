@@ -1,0 +1,367 @@
+{
+  "meta": {
+    "instanceId": "telegram-manager-updater"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "search",
+        "folderId": "={{ $json.folderId }}",
+        "query": "mimeType='video/mp4' or mimeType='video/avi' or mimeType='video/mkv' or mimeType='video/mov'",
+        "limit": 10
+      },
+      "name": "Google Drive - Search Videos",
+      "type": "n8n-nodes-base.googleDrive",
+      "position": [200, 300],
+      "id": "google-drive-search",
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": "={{ $json.id }}",
+        "options": {}
+      },
+      "name": "Google Drive - Download Video",
+      "type": "n8n-nodes-base.googleDrive",
+      "position": [400, 300],
+      "id": "google-drive-download",
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -i \"{{ $json.name }}\" -movflags +faststart -c copy -avoid_negative_ts make_zero \"optimized_{{ $json.name }}\"",
+        "options": {}
+      },
+      "name": "FFmpeg - Optimize for Streaming",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [600, 300],
+      "id": "ffmpeg-optimize",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -i \"optimized_{{ $json.name }}\" -ss 00:00:01 -vframes 1 -q:v 2 \"thumbnail_{{ $json.name }}.jpg\"",
+        "options": {}
+      },
+      "name": "FFmpeg - Generate Thumbnail",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [600, 500],
+      "id": "ffmpeg-thumbnail",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "filePath": "optimized_{{ $json.name }}",
+        "options": {}
+      },
+      "name": "Read Optimized Video",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "position": [800, 300],
+      "id": "read-optimized-video",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "filePath": "thumbnail_{{ $json.name }}.jpg",
+        "options": {}
+      },
+      "name": "Read Thumbnail",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "position": [800, 500],
+      "id": "read-thumbnail",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendVideo",
+        "chatId": "={{ $json.telegramChatId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "🎬 {{ $json.name }}\n\n📁 From Google Drive\n🔄 Optimized for streaming\n⏯️ Ready for inline playback",
+          "parse_mode": "HTML",
+          "supports_streaming": true,
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "📂 Open in Drive",
+                  "url": "https://drive.google.com/file/d/{{ $json.id }}/view"
+                },
+                {
+                  "text": "🔄 Re-process",
+                  "callback_data": "reprocess_{{ $json.id }}"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "name": "Telegram - Send Video",
+      "type": "n8n-nodes-base.telegram",
+      "position": [1000, 300],
+      "id": "telegram-send-video",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.telegramChatId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "🖼️ Thumbnail for {{ $json.name }}"
+        }
+      },
+      "name": "Telegram - Send Thumbnail",
+      "type": "n8n-nodes-base.telegram",
+      "position": [1000, 500],
+      "id": "telegram-send-thumbnail",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "command": "rm \"{{ $json.name }}\" \"optimized_{{ $json.name }}\" \"thumbnail_{{ $json.name }}.jpg\"",
+        "options": {}
+      },
+      "name": "Cleanup Temp Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [1200, 400],
+      "id": "cleanup-files",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/webhook/video-process",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "position": [0, 300],
+      "id": "webhook-trigger",
+      "typeVersion": 1,
+      "webhookId": "video-process-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.mimeType }}",
+              "operation": "contains",
+              "value2": "video/"
+            }
+          ]
+        }
+      },
+      "name": "Filter Video Files Only",
+      "type": "n8n-nodes-base.if",
+      "position": [400, 450],
+      "id": "filter-videos",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "Processing completed"
+            },
+            {
+              "name": "filename",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "optimized",
+              "value": "true"
+            },
+            {
+              "name": "thumbnail_generated",
+              "value": "true"
+            },
+            {
+              "name": "telegram_sent",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Set Success Response",
+      "type": "n8n-nodes-base.set",
+      "position": [1400, 300],
+      "id": "set-success-response",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "error",
+              "value": "{{ $json.error.message }}"
+            },
+            {
+              "name": "status",
+              "value": "Processing failed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Set Error Response",
+      "type": "n8n-nodes-base.set",
+      "position": [1400, 600],
+      "id": "set-error-response",
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Search Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Search Videos": {
+      "main": [
+        [
+          {
+            "node": "Filter Video Files Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Video Files Only": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Download Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Download Video": {
+      "main": [
+        [
+          {
+            "node": "FFmpeg - Optimize for Streaming",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FFmpeg - Generate Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FFmpeg - Optimize for Streaming": {
+      "main": [
+        [
+          {
+            "node": "Read Optimized Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FFmpeg - Generate Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Read Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Optimized Video": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Send Video": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Temp Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Send Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Temp Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Temp Files": {
+      "main": [
+        [
+          {
+            "node": "Set Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "telegram-video-processing",
+      "name": "Telegram Video Processing"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "telegram-video-workflow-v1"
+}

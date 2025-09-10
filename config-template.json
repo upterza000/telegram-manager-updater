@@ -1,0 +1,50 @@
+{
+  "webhook": {
+    "url": "http://localhost:5678/webhook/video-process",
+    "method": "POST"
+  },
+  "googleDrive": {
+    "folderId": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
+    "serviceAccountKeyPath": "/path/to/service-account-key.json",
+    "supportedMimeTypes": [
+      "video/mp4",
+      "video/avi", 
+      "video/mkv",
+      "video/mov",
+      "video/quicktime",
+      "video/x-msvideo"
+    ]
+  },
+  "telegram": {
+    "botToken": "YOUR_TELEGRAM_BOT_TOKEN",
+    "chatId": "YOUR_TELEGRAM_CHAT_ID",
+    "maxFileSize": "50MB"
+  },
+  "ffmpeg": {
+    "videoOptimization": {
+      "command": "ffmpeg -i \"{input}\" -movflags +faststart -c copy -avoid_negative_ts make_zero \"{output}\"",
+      "fallbackCommand": "ffmpeg -i \"{input}\" -movflags +faststart -c:v libx264 -preset fast -c:a aac \"{output}\""
+    },
+    "thumbnailGeneration": {
+      "command": "ffmpeg -i \"{input}\" -ss {timestamp} -vframes 1 -q:v 2 \"{output}\"",
+      "timestamp": "00:00:01",
+      "quality": 2
+    }
+  },
+  "processing": {
+    "tempDirectory": "/tmp/n8n-video-processing",
+    "cleanupAfterProcessing": true,
+    "maxRetries": 3,
+    "retryDelay": 5000
+  },
+  "responses": {
+    "success": {
+      "status": "success",
+      "message": "Video processed and sent successfully"
+    },
+    "error": {
+      "status": "error", 
+      "message": "Video processing failed"
+    }
+  }
+}

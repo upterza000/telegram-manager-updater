@@ -1,0 +1,684 @@
+{
+  "meta": {
+    "instanceId": "telegram-manager-updater-advanced"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/webhook/video-process-advanced",
+        "options": {},
+        "responseMode": "responseNode"
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "position": [0, 300],
+      "id": "webhook-trigger-advanced",
+      "typeVersion": 1,
+      "webhookId": "video-process-advanced-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.folderId }}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{ $json.telegramChatId }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Validate Input Parameters",
+      "type": "n8n-nodes-base.if",
+      "position": [200, 300],
+      "id": "validate-input",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "folderId": "={{ $json.folderId }}",
+        "query": "mimeType contains 'video/' and trashed = false",
+        "limit": "={{ $json.limit || 10 }}",
+        "options": {
+          "fields": "files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink)"
+        }
+      },
+      "name": "Google Drive - Search Videos",
+      "type": "n8n-nodes-base.googleDrive",
+      "position": [400, 200],
+      "id": "google-drive-search-advanced",
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.size }}",
+              "operation": "smallerEqual",
+              "value2": 52428800
+            }
+          ],
+          "string": [
+            {
+              "value1": "={{ $json.mimeType }}",
+              "operation": "contains",
+              "value2": "video/"
+            }
+          ]
+        }
+      },
+      "name": "Filter Valid Videos",
+      "type": "n8n-nodes-base.if",
+      "position": [600, 200],
+      "id": "filter-valid-videos",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "tempDir",
+              "value": "/tmp/n8n-video-{{ $json.id }}"
+            },
+            {
+              "name": "originalFile",
+              "value": "/tmp/n8n-video-{{ $json.id }}/original_{{ $json.name }}"
+            },
+            {
+              "name": "optimizedFile", 
+              "value": "/tmp/n8n-video-{{ $json.id }}/optimized_{{ $json.name }}"
+            },
+            {
+              "name": "thumbnailFile",
+              "value": "/tmp/n8n-video-{{ $json.id }}/thumbnail_{{ $json.name }}.jpg"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Set File Paths",
+      "type": "n8n-nodes-base.set",
+      "position": [800, 200],
+      "id": "set-file-paths",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "command": "mkdir -p \"{{ $json.tempDir }}\"",
+        "options": {}
+      },
+      "name": "Create Temp Directory",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [1000, 200],
+      "id": "create-temp-dir",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": "={{ $json.id }}",
+        "options": {
+          "destinationPath": "={{ $json.originalFile }}"
+        }
+      },
+      "name": "Google Drive - Download Video",
+      "type": "n8n-nodes-base.googleDrive",
+      "position": [1200, 200],
+      "id": "google-drive-download-advanced",
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "command": "ffprobe -v quiet -print_format json -show_format -show_streams \"{{ $json.originalFile }}\"",
+        "options": {}
+      },
+      "name": "Analyze Video Properties",
+      "type": "n8n-nodes-base.executeCommand", 
+      "position": [1400, 200],
+      "id": "analyze-video",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse ffprobe output and determine processing strategy\nconst ffprobeOutput = JSON.parse($input.first().json.stdout);\nconst videoStream = ffprobeOutput.streams.find(s => s.codec_type === 'video');\nconst audioStream = ffprobeOutput.streams.find(s => s.codec_type === 'audio');\n\n// Check if video already has faststart\nconst needsOptimization = !ffprobeOutput.format.tags || \n  !ffprobeOutput.format.tags['major_brand'] || \n  ffprobeOutput.format.tags['major_brand'] !== 'isom';\n\n// Determine best processing approach\nlet processingMode = 'copy'; // Default to stream copy for speed\nif (videoStream.codec_name !== 'h264' || audioStream?.codec_name !== 'aac') {\n  processingMode = 'encode'; // Need to re-encode\n}\n\nreturn {\n  json: {\n    ...($input.first().json),\n    videoInfo: {\n      duration: parseFloat(ffprobeOutput.format.duration),\n      width: videoStream.width,\n      height: videoStream.height,\n      fps: eval(videoStream.r_frame_rate),\n      videoCodec: videoStream.codec_name,\n      audioCodec: audioStream?.codec_name,\n      bitrate: parseInt(ffprobeOutput.format.bit_rate)\n    },\n    processingMode,\n    needsOptimization\n  }\n};"
+      },
+      "name": "Process Video Analysis",
+      "type": "n8n-nodes-base.code",
+      "position": [1600, 200],
+      "id": "process-analysis",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needsOptimization }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Check If Optimization Needed",
+      "type": "n8n-nodes-base.if",
+      "position": [1800, 200],
+      "id": "check-optimization",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.processingMode === 'copy' ? \n  'ffmpeg -i \"' + $json.originalFile + '\" -movflags +faststart -c copy -avoid_negative_ts make_zero \"' + $json.optimizedFile + '\"' :\n  'ffmpeg -i \"' + $json.originalFile + '\" -movflags +faststart -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k \"' + $json.optimizedFile + '\"' }}",
+        "options": {}
+      },
+      "name": "FFmpeg - Optimize Video",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [2000, 100],
+      "id": "ffmpeg-optimize-advanced",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "command": "cp \"{{ $json.originalFile }}\" \"{{ $json.optimizedFile }}\"",
+        "options": {}
+      },
+      "name": "Copy Original (No Optimization)",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [2000, 300],
+      "id": "copy-original",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -i \"{{ $json.optimizedFile }}\" -ss {{ Math.floor($json.videoInfo.duration / 4) }} -vframes 1 -q:v 2 -vf \"scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2\" \"{{ $json.thumbnailFile }}\"",
+        "options": {}
+      },
+      "name": "Generate Smart Thumbnail",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [2200, 200],
+      "id": "generate-thumbnail-advanced",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "filePath": "={{ $json.optimizedFile }}",
+        "options": {}
+      },
+      "name": "Read Optimized Video Binary",
+      "type": "n8n-nodes-base.readBinaryFile", 
+      "position": [2400, 100],
+      "id": "read-video-binary",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "filePath": "={{ $json.thumbnailFile }}",
+        "options": {}
+      },
+      "name": "Read Thumbnail Binary",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "position": [2400, 300],
+      "id": "read-thumbnail-binary",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendVideo",
+        "chatId": "={{ $json.telegramChatId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "width": "={{ $json.videoInfo.width }}",
+          "height": "={{ $json.videoInfo.height }}", 
+          "duration": "={{ Math.floor($json.videoInfo.duration) }}",
+          "caption": "🎬 <b>{{ $json.name }}</b>\n\n📊 <b>รายละเอียด:</b>\n• 📐 ขนาด: {{ $json.videoInfo.width }}x{{ $json.videoInfo.height }}\n• ⏱️ ระยะเวลา: {{ Math.floor($json.videoInfo.duration / 60) }}:{{ String(Math.floor($json.videoInfo.duration % 60)).padStart(2, '0') }}\n• 📦 ขนาดไฟล์: {{ Math.round($json.size / 1024 / 1024 * 100) / 100 }} MB\n• 🎥 Codec: {{ $json.videoInfo.videoCodec }}/{{ $json.videoInfo.audioCodec }}\n• ⚡ ปรับแต่งแล้ว: {{ $json.needsOptimization ? '✅' : '📄 ไม่จำเป็น' }}\n\n🔄 <i>พร้อมเล่นแบบ Streaming</i>",
+          "parse_mode": "HTML",
+          "supports_streaming": true,
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "📂 เปิดใน Google Drive",
+                  "url": "={{ $json.webViewLink }}"
+                },
+                {
+                  "text": "🔄 ประมวลผลใหม่",
+                  "callback_data": "reprocess_{{ $json.id }}"
+                }
+              ],
+              [
+                {
+                  "text": "📊 รายละเอียดเพิ่มเติม",
+                  "callback_data": "details_{{ $json.id }}"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "name": "Telegram - Send Optimized Video",
+      "type": "n8n-nodes-base.telegram",
+      "position": [2600, 100],
+      "id": "telegram-send-video-advanced",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.telegramChatId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "🖼️ Thumbnail สำหรับ: <b>{{ $json.name }}</b>",
+          "parse_mode": "HTML"
+        }
+      },
+      "name": "Telegram - Send Thumbnail",
+      "type": "n8n-nodes-base.telegram",
+      "position": [2600, 300],
+      "id": "telegram-send-thumbnail-advanced",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "command": "rm -rf \"{{ $json.tempDir }}\"",
+        "options": {}
+      },
+      "name": "Cleanup Temporary Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "position": [2800, 200],
+      "id": "cleanup-temp-advanced",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "message", 
+              "value": "Video processed and sent successfully"
+            },
+            {
+              "name": "filename",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "fileId",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "processingMode",
+              "value": "={{ $json.processingMode }}"
+            },
+            {
+              "name": "optimized",
+              "value": "={{ $json.needsOptimization }}"
+            },
+            {
+              "name": "videoInfo",
+              "value": "={{ JSON.stringify($json.videoInfo) }}"
+            }
+          ],
+          "number": [
+            {
+              "name": "filesProcessed",
+              "value": 1
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Success Response",
+      "type": "n8n-nodes-base.set",
+      "position": [3000, 200],
+      "id": "success-response-advanced",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {},
+      "name": "Respond to Webhook - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [3200, 200],
+      "id": "respond-success",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "error"
+            },
+            {
+              "name": "message",
+              "value": "Invalid input parameters. Please provide folderId and telegramChatId"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Error Response - Invalid Input",
+      "type": "n8n-nodes-base.set",
+      "position": [400, 500],
+      "id": "error-invalid-input",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {},
+      "name": "Respond to Webhook - Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [600, 500],
+      "id": "respond-error",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "error"
+            },
+            {
+              "name": "message",
+              "value": "No valid video files found or files exceed 50MB limit"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Error Response - No Valid Files",
+      "type": "n8n-nodes-base.set",
+      "position": [800, 500],
+      "id": "error-no-files",
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Search Videos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response - Invalid Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Search Videos": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid Videos": {
+      "main": [
+        [
+          {
+            "node": "Set File Paths",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response - No Valid Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set File Paths": {
+      "main": [
+        [
+          {
+            "node": "Create Temp Directory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Temp Directory": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Download Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Download Video": {
+      "main": [
+        [
+          {
+            "node": "Analyze Video Properties",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Video Properties": {
+      "main": [
+        [
+          {
+            "node": "Process Video Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Video Analysis": {
+      "main": [
+        [
+          {
+            "node": "Check If Optimization Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Optimization Needed": {
+      "main": [
+        [
+          {
+            "node": "FFmpeg - Optimize Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Copy Original (No Optimization)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FFmpeg - Optimize Video": {
+      "main": [
+        [
+          {
+            "node": "Generate Smart Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy Original (No Optimization)": {
+      "main": [
+        [
+          {
+            "node": "Generate Smart Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Smart Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Read Optimized Video Binary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Thumbnail Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Optimized Video Binary": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Optimized Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Thumbnail Binary": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Send Optimized Video": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Temporary Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Send Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Temporary Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Temporary Files": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Response - Invalid Input": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Response - No Valid Files": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z", 
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "telegram-video-processing-advanced",
+      "name": "Telegram Video Processing Advanced"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "telegram-video-workflow-advanced-v1"
+}

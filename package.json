@@ -1,0 +1,61 @@
+{
+  "name": "telegram-manager-updater",
+  "version": "1.2.0",
+  "description": "N8N Workflow for processing videos from Google Drive and sending to Telegram with streaming support",
+  "main": "test-workflow.js",
+  "scripts": {
+    "test": "node test-workflow.js",
+    "deploy": "./deploy.sh",
+    "start": "n8n start",
+    "validate": "node test-workflow.js",
+    "setup": "./deploy.sh"
+  },
+  "keywords": [
+    "n8n",
+    "telegram",
+    "video-processing",
+    "google-drive",
+    "ffmpeg",
+    "streaming",
+    "workflow",
+    "automation"
+  ],
+  "author": "upterza000",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/upterza000/telegram-manager-updater.git"
+  },
+  "bugs": {
+    "url": "https://github.com/upterza000/telegram-manager-updater/issues"
+  },
+  "homepage": "https://github.com/upterza000/telegram-manager-updater#readme",
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
+  },
+  "dependencies": {
+    "n8n": "^1.0.0"
+  },
+  "devDependencies": {},
+  "peerDependencies": {
+    "ffmpeg": "*"
+  },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "files": [
+    "telegram-video-workflow.json",
+    "advanced-telegram-video-workflow.json",
+    "config-template.json",
+    "deploy.sh",
+    "test-workflow.js",
+    "README.md"
+  ],
+  "bin": {
+    "telegram-video-test": "./test-workflow.js",
+    "telegram-video-deploy": "./deploy.sh"
+  }
+}
