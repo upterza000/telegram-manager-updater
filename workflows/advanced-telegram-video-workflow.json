@@ -1,0 +1,341 @@
+{
+  "name": "Advanced Telegram Video Manager with Error Handling",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute",
+              "minute": 5
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "mode": "list",
+          "value": "{{ $json.folderId }}"
+        },
+        "event": "fileCreated",
+        "options": {
+          "watchForFileTypes": "video"
+        }
+      },
+      "id": "google-drive-trigger",
+      "name": "Google Drive Monitor",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google_drive_oauth",
+          "name": "Google Drive OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate and filter video files\nconst item = $input.first()?.json;\n\nif (!item) {\n  return [];\n}\n\n// Supported video formats\nconst supportedFormats = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.m4v'];\nconst fileName = item.name || '';\nconst fileSize = parseInt(item.size) || 0;\n\n// Check file extension\nconst isVideoFile = supportedFormats.some(format => \n  fileName.toLowerCase().endsWith(format)\n);\n\n// Check file size (max 2GB for processing)\nconst maxSize = 2 * 1024 * 1024 * 1024; // 2GB\nconst isValidSize = fileSize > 0 && fileSize <= maxSize;\n\nif (isVideoFile && isValidSize) {\n  return [{\n    json: {\n      ...item,\n      processing: {\n        startTime: new Date().toISOString(),\n        status: 'validated',\n        originalSize: fileSize,\n        sizeInMB: Math.round(fileSize / 1048576 * 100) / 100\n      }\n    }\n  }];\n} else {\n  // Log rejected files\n  console.log(`Rejected file: ${fileName}, Size: ${fileSize}, IsVideo: ${isVideoFile}, ValidSize: ${isValidSize}`);\n  return [];\n}"
+      },
+      "id": "validate-video-file",
+      "name": "Validate Video File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id", 
+          "value": "={{ $json.id }}"
+        },
+        "options": {
+          "binaryPropertyName": "video_data"
+        }
+      },
+      "id": "download-video",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [680, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google_drive_oauth",
+          "name": "Google Drive OAuth2 API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate unique file paths and prepare for processing\nconst item = $input.first()?.json;\nconst binary = $input.first()?.binary?.video_data;\n\nif (!binary) {\n  throw new Error('No video data found');\n}\n\nconst timestamp = Date.now();\nconst randomId = Math.random().toString(36).substring(2, 8);\nconst baseName = `video_${timestamp}_${randomId}`;\nconst originalExt = binary.fileName?.split('.').pop() || 'mp4';\n\nconst paths = {\n  original: `/tmp/${baseName}.${originalExt}`,\n  optimized: `/tmp/${baseName}_optimized.mp4`,\n  thumbnail: `/tmp/${baseName}_thumb.jpg`,\n  info: `/tmp/${baseName}_info.json`\n};\n\nreturn [{\n  json: {\n    ...item,\n    processing: {\n      ...item.processing,\n      paths,\n      baseName,\n      timestamp,\n      step: 'file_paths_prepared'\n    }\n  },\n  binary: {\n    video_data: binary\n  }\n}];"
+      },
+      "id": "prepare-processing",
+      "name": "Prepare Processing Paths",
+      "type": "n8n-nodes-base.code", 
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "command": "cat > {{ $json.processing.paths.original }}",
+        "options": {
+          "encoding": "binaryData",
+          "binaryData": "video_data"
+        }
+      },
+      "id": "save-original",
+      "name": "Save Original File",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "command": "ffprobe -v quiet -print_format json -show_format -show_streams {{ $json.processing.paths.original }} > {{ $json.processing.paths.info }}",
+        "options": {}
+      },
+      "id": "analyze-video",
+      "name": "Analyze Video Properties", 
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "filePath": "{{ $json.processing.paths.info }}",
+        "options": {}
+      },
+      "id": "read-video-info",
+      "name": "Read Video Analysis",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine optimal FFmpeg settings based on video analysis\nconst item = $input.first()?.json;\nlet videoInfo = {};\n\ntry {\n  const infoData = $input.first()?.binary?.data?.data;\n  if (infoData) {\n    videoInfo = JSON.parse(Buffer.from(infoData, 'base64').toString());\n  }\n} catch (e) {\n  console.log('Could not parse video info, using defaults');\n}\n\nconst format = videoInfo.format || {};\nconst videoStream = videoInfo.streams?.find(s => s.codec_type === 'video') || {};\nconst audioStream = videoInfo.streams?.find(s => s.codec_type === 'audio') || {};\n\n// Determine if re-encoding is needed\nconst duration = parseFloat(format.duration) || 0;\nconst bitrate = parseInt(format.bit_rate) || 0;\nconst width = parseInt(videoStream.width) || 0;\nconst height = parseInt(videoStream.height) || 0;\nconst isH264 = videoStream.codec_name === 'h264';\nconst hasAudio = audioStream.codec_name !== undefined;\n\n// Calculate target settings\nlet ffmpegCommand = '';\nlet needsReencoding = false;\n\n// Check if file needs optimization for Telegram\nconst telegramMaxSize = 50 * 1024 * 1024; // 50MB\nconst currentSize = parseInt(item.processing.originalSize) || 0;\n\nif (currentSize > telegramMaxSize || !isH264 || width > 1920 || height > 1080) {\n  needsReencoding = true;\n  \n  // Calculate CRF based on original size\n  let crf = 23;\n  if (currentSize > telegramMaxSize * 2) crf = 28;\n  else if (currentSize > telegramMaxSize * 1.5) crf = 25;\n  \n  ffmpegCommand = `ffmpeg -i \"{{ $json.processing.paths.original }}\" -c:v libx264 -crf ${crf} -preset medium -c:a aac -movflags +faststart -avoid_negative_ts make_zero \"{{ $json.processing.paths.optimized }}\"`;\n} else {\n  // Just add faststart without re-encoding\n  ffmpegCommand = `ffmpeg -i \"{{ $json.processing.paths.original }}\" -c copy -movflags +faststart -avoid_negative_ts make_zero \"{{ $json.processing.paths.optimized }}\"`;\n}\n\nreturn [{\n  json: {\n    ...item,\n    processing: {\n      ...item.processing,\n      videoInfo: {\n        duration,\n        bitrate,\n        width,\n        height,\n        codec: videoStream.codec_name,\n        hasAudio,\n        needsReencoding\n      },\n      ffmpegCommand,\n      step: 'optimization_planned'\n    }\n  }\n}];"
+      },
+      "id": "plan-optimization",
+      "name": "Plan Video Optimization",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "command": "{{ $json.processing.ffmpegCommand }}",
+        "options": {
+          "timeout": 1800000
+        }
+      },
+      "id": "optimize-video",
+      "name": "Optimize Video for Telegram",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2000, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -i \"{{ $json.processing.paths.optimized }}\" -ss 00:00:01.000 -vframes 1 -q:v 2 \"{{ $json.processing.paths.thumbnail }}\"",
+        "options": {}
+      },
+      "id": "generate-thumbnail",
+      "name": "Generate Thumbnail",
+      "type": "n8n-nodes-base.executeCommand", 
+      "typeVersion": 1,
+      "position": [2000, 480],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "filePath": "{{ $json.processing.paths.optimized }}",
+        "options": {
+          "binaryPropertyName": "optimized_video"
+        }
+      },
+      "id": "read-optimized",
+      "name": "Read Optimized Video",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "filePath": "{{ $json.processing.paths.thumbnail }}",
+        "options": {
+          "binaryPropertyName": "thumbnail"
+        }
+      },
+      "id": "read-thumbnail",
+      "name": "Read Thumbnail", 
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [2220, 480]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-assets",
+      "name": "Merge Video Assets",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [2440, 390]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare final data for Telegram\nconst item = $input.first()?.json;\nconst optimizedBinary = $input.first()?.binary?.optimized_video;\nconst thumbnailBinary = $input.first()?.binary?.thumbnail;\n\nif (!optimizedBinary) {\n  throw new Error('Optimized video not found');\n}\n\n// Get file stats\nconst fs = require('fs');\nlet optimizedSize = 0;\ntry {\n  const stats = fs.statSync(item.processing.paths.optimized);\n  optimizedSize = stats.size;\n} catch (e) {\n  console.log('Could not get optimized file size');\n}\n\n// Check Telegram size limit\nconst telegramMaxSize = 50 * 1024 * 1024; // 50MB\nif (optimizedSize > telegramMaxSize) {\n  throw new Error(`Video too large for Telegram: ${Math.round(optimizedSize/1048576)}MB > 50MB`);\n}\n\n// Generate caption\nconst originalSizeMB = Math.round(item.processing.originalSize / 1048576 * 100) / 100;\nconst optimizedSizeMB = Math.round(optimizedSize / 1048576 * 100) / 100;\nconst compressionRatio = Math.round((1 - optimizedSize/item.processing.originalSize) * 100);\n\nconst caption = `🎬 **${item.name}**\\n\\n` +\n  `📊 **ข้อมูลไฟล์:**\\n` +\n  `• ขนาดต้นฉบับ: ${originalSizeMB}MB\\n` +\n  `• ขนาดหลังประมวลผล: ${optimizedSizeMB}MB\\n` +\n  `• อัตราบีบอัด: ${compressionRatio}%\\n\\n` +\n  `🎥 **คุณสมบัติ:**\\n` +\n  `• ความละเอียด: ${item.processing.videoInfo?.width}x${item.processing.videoInfo?.height}\\n` +\n  `• ระยะเวลา: ${Math.round(item.processing.videoInfo?.duration || 0)}s\\n` +\n  `• Codec: ${item.processing.videoInfo?.codec || 'N/A'}\\n\\n` +\n  `✅ พร้อมเล่นทันทีใน Telegram`;\n\nreturn [{\n  json: {\n    ...item,\n    telegram: {\n      caption,\n      chatId: process.env.TELEGRAM_CHAT_ID || item.telegram_chat_id,\n      optimizedSizeMB,\n      compressionRatio\n    },\n    processing: {\n      ...item.processing,\n      finalSize: optimizedSize,\n      step: 'ready_for_telegram'\n    }\n  },\n  binary: {\n    optimized_video: optimizedBinary,\n    thumbnail: thumbnailBinary\n  }\n}];"
+      },
+      "id": "prepare-telegram",
+      "name": "Prepare for Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 390]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram.chatId }}",
+        "operation": "sendVideo",
+        "binaryData": true,
+        "binaryPropertyName": "optimized_video",
+        "additionalFields": {
+          "caption": "={{ $json.telegram.caption }}",
+          "parse_mode": "MarkdownV2",
+          "supports_streaming": true,
+          "thumbnail": "thumbnail",
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "📂 Google Drive",
+                  "url": "{{ $json.webViewLink }}"
+                },
+                {
+                  "text": "⬇️ ดาวน์โหลด",
+                  "url": "{{ $json.webContentLink }}"
+                }
+              ],
+              [
+                {
+                  "text": "🔄 ประมวลผลใหม่",
+                  "callback_data": "reprocess_{{ $json.id }}"
+                },
+                {
+                  "text": "📊 สถิติ",
+                  "callback_data": "stats_{{ $json.id }}"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "id": "send-telegram",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [2880, 390],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_bot_api",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "rm -f \"{{ $json.processing.paths.original }}\" \"{{ $json.processing.paths.optimized }}\" \"{{ $json.processing.paths.thumbnail }}\" \"{{ $json.processing.paths.info }}\"",
+        "options": {}
+      },
+      "id": "cleanup",
+      "name": "Cleanup Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3100, 390]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log successful processing\nconst item = $input.first()?.json;\nconst endTime = new Date().toISOString();\nconst startTime = item.processing?.startTime;\n\nlet processingTimeMs = 0;\nif (startTime) {\n  processingTimeMs = new Date(endTime) - new Date(startTime);\n}\n\nconst logData = {\n  fileName: item.name,\n  originalSizeMB: Math.round(item.processing.originalSize / 1048576 * 100) / 100,\n  finalSizeMB: item.telegram?.optimizedSizeMB || 0,\n  compressionRatio: item.telegram?.compressionRatio || 0,\n  processingTimeSeconds: Math.round(processingTimeMs / 1000),\n  status: 'success',\n  timestamp: endTime\n};\n\nconsole.log('Video processing completed:', JSON.stringify(logData, null, 2));\n\nreturn [{\n  json: {\n    ...item,\n    processing: {\n      ...item.processing,\n      endTime,\n      processingTimeMs,\n      status: 'completed'\n    }\n  }\n}];"
+      },
+      "id": "log-success",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3320, 390]
+    }
+  ],
+  "connections": {
+    "Google Drive Monitor": {
+      "main": [[{"node": "Validate Video File", "type": "main", "index": 0}]]
+    },
+    "Validate Video File": {
+      "main": [[{"node": "Download Video", "type": "main", "index": 0}]]
+    },
+    "Download Video": {
+      "main": [[{"node": "Prepare Processing Paths", "type": "main", "index": 0}]]
+    },
+    "Prepare Processing Paths": {
+      "main": [[{"node": "Save Original File", "type": "main", "index": 0}]]
+    },
+    "Save Original File": {
+      "main": [[{"node": "Analyze Video Properties", "type": "main", "index": 0}]]
+    },
+    "Analyze Video Properties": {
+      "main": [[{"node": "Read Video Analysis", "type": "main", "index": 0}]]
+    },
+    "Read Video Analysis": {
+      "main": [[{"node": "Plan Video Optimization", "type": "main", "index": 0}]]
+    },
+    "Plan Video Optimization": {
+      "main": [[
+        {"node": "Optimize Video for Telegram", "type": "main", "index": 0},
+        {"node": "Generate Thumbnail", "type": "main", "index": 0}
+      ]]
+    },
+    "Optimize Video for Telegram": {
+      "main": [[{"node": "Read Optimized Video", "type": "main", "index": 0}]]
+    },
+    "Generate Thumbnail": {
+      "main": [[{"node": "Read Thumbnail", "type": "main", "index": 0}]]
+    },
+    "Read Optimized Video": {
+      "main": [[{"node": "Merge Video Assets", "type": "main", "index": 0}]]
+    },
+    "Read Thumbnail": {
+      "main": [[{"node": "Merge Video Assets", "type": "main", "index": 1}]]
+    },
+    "Merge Video Assets": {
+      "main": [[{"node": "Prepare for Telegram", "type": "main", "index": 0}]]
+    },
+    "Prepare for Telegram": {
+      "main": [[{"node": "Send to Telegram", "type": "main", "index": 0}]]
+    },
+    "Send to Telegram": {
+      "main": [[{"node": "Cleanup Files", "type": "main", "index": 0}]]
+    },
+    "Cleanup Files": {
+      "main": [[{"node": "Log Success", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {"id": "telegram-video", "name": "telegram-video"},
+    {"id": "advanced", "name": "advanced"}
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "advanced-telegram-video",
+  "versionId": "2"
+}

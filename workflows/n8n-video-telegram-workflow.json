@@ -1,0 +1,380 @@
+{
+  "name": "Video Telegram Manager - Google Drive to Telegram Streaming",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute",
+              "minute": 5
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "mode": "list",
+          "value": "{{ $json.folderId }}"
+        },
+        "event": "fileCreated",
+        "options": {
+          "watchForFileTypes": "video"
+        }
+      },
+      "id": "google-drive-trigger",
+      "name": "Google Drive Trigger",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google_drive_oauth",
+          "name": "Google Drive OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "options": {
+          "binaryPropertyName": "video_data"
+        }
+      },
+      "id": "google-drive-download",
+      "name": "Download Video File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google_drive_oauth",
+          "name": "Google Drive OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -i {{ $binary.video_data.fileName }} -movflags +faststart -c copy -avoid_negative_ts make_zero {{ $binary.video_data.fileName }}.optimized.mp4",
+        "options": {
+          "workingDirectory": "/tmp"
+        }
+      },
+      "id": "ffmpeg-faststart",
+      "name": "FFmpeg - Optimize for Streaming",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -i {{ $binary.video_data.fileName }} -ss 00:00:01.000 -vframes 1 -q:v 2 {{ $binary.video_data.fileName }}_thumbnail.jpg",
+        "options": {
+          "workingDirectory": "/tmp"
+        }
+      },
+      "id": "ffmpeg-thumbnail",
+      "name": "Generate Thumbnail",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        680,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/tmp/{{ $binary.video_data.fileName }}.optimized.mp4",
+        "options": {
+          "binaryPropertyName": "optimized_video"
+        }
+      },
+      "id": "read-optimized-video",
+      "name": "Read Optimized Video",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/tmp/{{ $binary.video_data.fileName }}_thumbnail.jpg",
+        "options": {
+          "binaryPropertyName": "thumbnail"
+        }
+      },
+      "id": "read-thumbnail",
+      "name": "Read Thumbnail",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        900,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-files",
+      "name": "Merge Video & Thumbnail",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id || $json.chatId }}",
+        "operation": "sendVideo",
+        "binaryData": true,
+        "binaryPropertyName": "optimized_video",
+        "additionalFields": {
+          "caption": "🎬 **{{ $json.name }}**\n\n📁 จาก: Google Drive\n⏱️ ประมวลผลเมื่อ: {{ $now.format('DD/MM/YYYY HH:mm:ss') }}\n\n✅ พร้อมเล่นทันทีใน Telegram",
+          "parse_mode": "MarkdownV2",
+          "supports_streaming": true,
+          "thumbnail": "thumbnail",
+          "reply_markup": {
+            "inline_keyboard": [
+              [
+                {
+                  "text": "📂 เปิด Google Drive",
+                  "url": "{{ $json.webViewLink }}"
+                },
+                {
+                  "text": "⬇️ ดาวน์โหลด",
+                  "url": "{{ $json.webContentLink }}"
+                }
+              ],
+              [
+                {
+                  "text": "🔄 ประมวลผลใหม่",
+                  "callback_data": "reprocess_{{ $json.id }}"
+                }
+              ]
+            ]
+          }
+        }
+      },
+      "id": "telegram-send-video",
+      "name": "Send Video to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        390
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_bot_api",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "rm -f /tmp/{{ $binary.video_data.fileName }} /tmp/{{ $binary.video_data.fileName }}.optimized.mp4 /tmp/{{ $binary.video_data.fileName }}_thumbnail.jpg",
+        "options": {}
+      },
+      "id": "cleanup-files",
+      "name": "Cleanup Temporary Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telegram-webhook",
+        "options": {
+          "noResponseBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Telegram Webhook (Optional)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        500
+      ],
+      "webhookId": "telegram-callback"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle Telegram callback data for reprocessing\nconst callbackData = $input.first()?.json?.callback_query?.data;\n\nif (callbackData && callbackData.startsWith('reprocess_')) {\n  const fileId = callbackData.replace('reprocess_', '');\n  \n  return [{\n    json: {\n      id: fileId,\n      reprocess: true,\n      chatId: $input.first()?.json?.callback_query?.message?.chat?.id\n    }\n  }];\n}\n\nreturn [];"
+      },
+      "id": "process-callback",
+      "name": "Process Telegram Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download Video File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video File": {
+      "main": [
+        [
+          {
+            "node": "FFmpeg - Optimize for Streaming",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FFmpeg - Optimize for Streaming": {
+      "main": [
+        [
+          {
+            "node": "Read Optimized Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Read Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Optimized Video": {
+      "main": [
+        [
+          {
+            "node": "Merge Video & Thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Merge Video & Thumbnail",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Video & Thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Send Video to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Video to Telegram": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Temporary Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Webhook (Optional)": {
+      "main": [
+        [
+          {
+            "node": "Process Telegram Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Telegram Callback": {
+      "main": [
+        [
+          {
+            "node": "Download Video File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "telegram-video",
+      "name": "telegram-video"
+    },
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z", 
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "google-drive",
+      "name": "google-drive"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "telegram-video-manager",
+  "versionId": "1"
+}
