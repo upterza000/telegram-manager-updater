@@ -1,0 +1,44 @@
+{
+  "name": "telegram-manager-updater",
+  "version": "1.1.0",
+  "description": "N8N workflow for processing videos from Google Drive and sending to Telegram with streaming support",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest",
+    "test:setup": "node test-setup.js",
+    "lint": "eslint src/",
+    "docker:build": "docker build -t telegram-manager-updater .",
+    "docker:run": "docker run -p 3000:3000 telegram-manager-updater",
+    "deploy": "docker-compose up -d",
+    "logs": "docker-compose logs -f"
+  },
+  "keywords": ["telegram", "google-drive", "video-processing", "n8n", "workflow", "ffmpeg"],
+  "author": "upterza000",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "googleapis": "^128.0.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "multer": "^1.4.5-lts.1",
+    "fs-extra": "^11.1.1",
+    "path": "^0.12.7",
+    "sharp": "^0.32.6",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "eslint": "^8.51.0",
+    "jest": "^29.7.0",
+    "@types/node": "^20.8.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
