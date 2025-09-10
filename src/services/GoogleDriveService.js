@@ -17,7 +17,7 @@ class GoogleDriveService {
         try {
             let auth;
             
-            if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+            if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY && fs.existsSync(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)) {
                 // Use service account
                 const serviceAccountKey = JSON.parse(
                     fs.readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, 'utf8')
@@ -38,7 +38,8 @@ class GoogleDriveService {
             this.drive = google.drive({ version: 'v3', auth });
             console.log('Google Drive service initialized');
         } catch (error) {
-            console.error('Error initializing Google Drive service:', error);
+            console.warn('Google Drive service initialization failed:', error.message);
+            console.log('Continuing without Google Drive integration...');
         }
     }
     

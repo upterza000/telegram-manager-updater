@@ -62,25 +62,29 @@ class VideoProcessor {
      * @param {number} timeOffset - Time offset in seconds (default: 5)
      * @returns {Promise<string>} - Path to thumbnail
      */
-    async generateThumbnail(videoPath, thumbnailPath, timeOffset = 5) {
+    async generateThumbnail(videoPath, thumbnailPath, timeOffset = 2) {
         return new Promise((resolve, reject) => {
             console.log(`Generating thumbnail: ${videoPath}`);
             
             ffmpeg(videoPath)
-                .screenshots({
-                    timestamps: [timeOffset],
-                    filename: path.basename(thumbnailPath),
-                    folder: path.dirname(thumbnailPath),
-                    size: '320x240'
+                .seekInput(timeOffset)
+                .outputOptions([
+                    '-vframes', '1',
+                    '-vf', 'scale=320:240'
+                ])
+                .output(thumbnailPath)
+                .on('start', (commandLine) => {
+                    console.log('Thumbnail FFmpeg command: ' + commandLine);
                 })
                 .on('end', () => {
-                    console.log('Thumbnail generated');
+                    console.log('Thumbnail generated successfully');
                     resolve(thumbnailPath);
                 })
                 .on('error', (err) => {
                     console.error('Error generating thumbnail:', err);
                     reject(err);
-                });
+                })
+                .run();
         });
     }
     
